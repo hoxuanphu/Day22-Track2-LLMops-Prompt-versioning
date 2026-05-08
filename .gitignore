@@ -1,0 +1,9 @@
+.env
+__pycache__/
+*.pyc
+.DS_Store
+data/ragas_report.json
+evidence/
+data/v1_samples.pkl
+data/v2_samples.pkl
+venv/

@@ -1,259 +1,123 @@
-"""
-Step 4 — Guardrails AI Validators
-====================================
-TASK:
-  1. Build a PIIDetector validator that detects & redacts emails, phone
-     numbers, SSNs, and credit card numbers
-  2. Build a JSONFormatter validator that auto-repairs malformed JSON
-  3. Wrap each with a Guard and test with sample inputs
-  4. Run a full demo with 6 PII cases and 5 JSON cases
-
-DELIVERABLE: All test cases pass (PII redacted, JSON repaired)
-
-KEY CONCEPTS:
-  - @register_validator — declares a custom validator class
-  - Validator.validate() — implement the check + fix logic
-  - OnFailAction.FIX — replace output instead of raising an error
-  - Guard().use(MyValidator(on_fail=...)) — attach validator to guard
-  - guard.validate(text) → ValidationOutcome
-    .validation_passed — bool
-    .validated_output   — the (possibly repaired) output string
-
-⚠️  IMPORTANT: pass `on_fail` to the VALIDATOR constructor, NOT to Guard.use()
-    WRONG: Guard().use(PIIDetector, on_fail=OnFailAction.FIX)  ← TypeError
-    RIGHT: Guard().use(PIIDetector(on_fail=OnFailAction.FIX))  ← correct
-"""
-
+import os
 import re
 import json
+from guardrails import Guard, OnFailAction, Validator, register_validator
+from guardrails.validators import PassResult, FailResult
 
-# ── 1. Imports ───────────────────────────────────────────────────────────────
-# TODO: import Guardrails AI components
-# from guardrails import Guard
-# from guardrails.validators import (
-#     Validator,
-#     register_validator,
-#     PassResult,
-#     FailResult,
-#     ValidationResult,
-# )
-# from guardrails.hub import OnFailAction  (or from guardrails.validator_base import OnFailAction)
-#
-# If import path for OnFailAction differs, try:
-#   from guardrails.validator_base import OnFailAction
+# ─── Validator A: PII Detector ──────────────────────────────────────────────
 
+@register_validator(name="custom/pii-detector", data_type="string")
+class PIIDetector(Validator):
+    def __init__(self, on_fail=OnFailAction.FIX, **kwargs):
+        super().__init__(on_fail=on_fail, **kwargs)
+        # Regex patterns
+        self.email_pattern = re.compile(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}')
+        # US Phone: (123) 456-7890 or 123-456-7890
+        self.phone_pattern = re.compile(r'\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}')
+        # SSN: 123-45-6789
+        self.ssn_pattern = re.compile(r'\b\d{3}-\d{2}-\d{4}\b')
+        # Credit Card: 16 digits
+        self.cc_pattern = re.compile(r'\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b')
 
-# ── 2. PII Detector Validator ─────────────────────────────────────────────────
-# TODO: replace `object` with `Validator` after importing it
-# TODO: add @register_validator(name="pii-detector", data_type="string")
+    def validate(self, value: str, metadata: dict) -> Validator.ValidationResult:
+        original_value = value
+        
+        # Redact patterns
+        value = self.email_pattern.sub("[REDACTED]", value)
+        value = self.phone_pattern.sub("[REDACTED]", value)
+        value = self.ssn_pattern.sub("[REDACTED]", value)
+        value = self.cc_pattern.sub("[REDACTED]", value)
+        
+        if value != original_value:
+            return FailResult(
+                error_message="PII detected and redacted",
+                fix_value=value
+            )
+        return PassResult()
 
-class PIIDetector(object):   # TODO: change to Validator
-    """
-    Detects and redacts Personally Identifiable Information (PII).
+# ─── Validator B: JSON Formatter ─────────────────────────────────────────────
 
-    Patterns detected:
-      - EMAIL: xxx@xxx.xxx
-      - PHONE: (123) 456-7890 or 123-456-7890
-      - SSN:   123-45-6789
-      - CREDIT CARD: 1234 5678 9012 3456 (or dashes)
-    """
+@register_validator(name="custom/json-formatter", data_type="string")
+class JSONFormatter(Validator):
+    def __init__(self, on_fail=OnFailAction.FIX, **kwargs):
+        super().__init__(on_fail=on_fail, **kwargs)
 
-    # TODO: define regex patterns as class constants
-    # PII_PATTERNS = {
-    #     "EMAIL":       r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b",
-    #     "PHONE":       r"\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}\b",
-    #     "SSN":         r"\b\d{3}-\d{2}-\d{4}\b",
-    #     "CREDIT_CARD": r"\b(?:\d{4}[-\s]?){3}\d{4}\b",
-    # }
+    def validate(self, value: str, metadata: dict) -> Validator.ValidationResult:
+        repaired = value.strip()
+        
+        # 1. Strip markdown fences
+        if repaired.startswith("```json"):
+            repaired = repaired[7:]
+        elif repaired.startswith("```"):
+            repaired = repaired[3:]
+        if repaired.endswith("```"):
+            repaired = repaired[:-3]
+        repaired = repaired.strip()
+        
+        # 2. Try to parse, if fails, try to repair
+        try:
+            json.loads(repaired)
+            return PassResult(value_override=repaired)
+        except json.JSONDecodeError:
+            try:
+                # Fix single quotes to double quotes
+                temp = repaired.replace("'", '"')
+                # Remove trailing commas before closing braces/brackets
+                temp = re.sub(r',\s*}', '}', temp)
+                temp = re.sub(r',\s*\]', ']', temp)
+                
+                json.loads(temp)
+                return PassResult(value_override=temp)
+            except json.JSONDecodeError as e:
+                # Repair failed
+                fix_val = json.dumps({
+                    "error": "Failed to repair JSON",
+                    "raw": value
+                })
+                return FailResult(
+                    error_message=f"Invalid JSON: {e}",
+                    fix_value=fix_val
+                )
 
-    def validate(self, value: str, metadata: dict):
-        """
-        Check value for PII; if found, redact and return PassResult
-        (with redacted text) so the pipeline continues.
+# ─── Tests ──────────────────────────────────────────────────────────────────
 
-        Steps:
-          1. Copy value → redacted_text
-          2. For each PII type and its pattern:
-             - Find all matches
-             - Replace each match with "[PII_TYPE_REDACTED]"
-             - Record the match in found_pii list
-          3. If any PII found → return PassResult(value_override=redacted_text)
-          4. Otherwise       → return PassResult(value_override=value)
-        """
-        # TODO: implement validate()
-        # redacted_text = value
-        # found_pii     = []
-
-        # for pii_type, pattern in self.PII_PATTERNS.items():
-        #     matches = re.findall(pattern, value)
-        #     for match in matches:
-        #         redacted_text = redacted_text.replace(match, f"[{pii_type}_REDACTED]")
-        #         found_pii.append((pii_type, match))
-
-        # if found_pii:
-        #     print(f"  ⚠️  Redacted {len(found_pii)} PII items: {[p[0] for p in found_pii]}")
-        #     return PassResult(value_override=redacted_text)
-        # return PassResult(value_override=value)
-
-        pass  # remove this line when done
-
-
-# ── 3. JSON Formatter Validator ───────────────────────────────────────────────
-# TODO: replace `object` with `Validator` after importing it
-# TODO: add @register_validator(name="json-formatter", data_type="string")
-
-class JSONFormatter(object):   # TODO: change to Validator
-    """
-    Validates and auto-repairs malformed JSON strings.
-
-    Common repairs:
-      - Strip markdown code fences (``` or ```json)
-      - Replace single quotes with double quotes
-      - Remove trailing commas before } or ]
-      - Re-serialize with json.dumps for consistent formatting
-    """
-
-    @staticmethod
-    def _repair(text: str) -> str:
-        """
-        Attempt to repair a JSON string.
-
-        Steps:
-          1. Strip leading/trailing whitespace
-          2. Remove markdown code fences (```json...``` or ```...```)
-          3. Replace single quotes → double quotes
-          4. Remove trailing commas before } or ]
-          5. Return the repaired string (without re-serializing yet)
-        """
-        # TODO: implement _repair()
-        # text = text.strip()
-
-        # # Remove markdown fences
-        # text = re.sub(r'^```(?:json)?\s*', '', text)
-        # text = re.sub(r'\s*```$',          '', text)
-        # text = text.strip()
-
-        # # Single quotes → double quotes
-        # text = text.replace("'", '"')
-
-        # # Remove trailing commas
-        # text = re.sub(r',\s*([}\]])', r'\1', text)
-
-        # return text
-
-        pass  # remove this line when done
-
-    def validate(self, value: str, metadata: dict):
-        """
-        Try to parse value as JSON.
-        If it fails, try _repair() then parse again.
-
-        Return PassResult with nicely formatted JSON if successful.
-        Return FailResult if JSON is unrecoverable.
-        """
-        # TODO: implement validate()
-        # try:
-        #     parsed  = json.loads(value)
-        #     repaired = json.dumps(parsed, indent=2)
-        #     return PassResult(value_override=repaired)
-        # except json.JSONDecodeError:
-        #     pass
-
-        # # Try repair
-        # try:
-        #     repaired_text = self._repair(value)
-        #     parsed        = json.loads(repaired_text)
-        #     repaired      = json.dumps(parsed, indent=2)
-        #     print(f"  🔧 JSON repaired successfully")
-        #     return PassResult(value_override=repaired)
-        # except json.JSONDecodeError as e:
-        #     return FailResult(error_message=f"Invalid JSON after repair attempt: {e}")
-
-        pass  # remove this line when done
-
-
-# ── 4. PII Guard demo ────────────────────────────────────────────────────────
-def demo_pii_guard():
-    """
-    Create a Guard with PIIDetector and test 6 sample texts:
-      1. Text with an email address
-      2. Text with a phone number
-      3. Text with a Social Security Number
-      4. Text with a credit card number
-      5. Text with multiple PII types
-      6. Clean text (no PII)
-    """
-    print("\n" + "=" * 55)
-    print("  PII Detection Demo")
-    print("=" * 55)
-
-    # TODO: create the guard
-    # guard = Guard().use(PIIDetector(on_fail=OnFailAction.FIX))
-
+def test_pii():
+    print("\n=== Testing PII Detector ===")
+    guard = Guard().use(PIIDetector(on_fail=OnFailAction.FIX))
+    
     test_cases = [
-        ("Email",       "Contact John at john.doe@example.com for details."),
-        ("Phone",       "Call our support line at (555) 867-5309."),
-        ("SSN",         "Patient SSN is 123-45-6789 on file."),
-        ("Credit Card", "Payment made with card 4532 1234 5678 9010."),
-        ("Multi-PII",   "Email: alice@example.com, Phone: 555-123-4567"),
-        ("Clean",       "No sensitive information in this text."),
+        "This is a clean string with no PII.",
+        "Contact me at test@example.com for more info.",
+        "My phone number is 123-456-7890.",
+        "SSN is 123-45-6789.",
+        "Card number is 1234-5678-9012-3456.",
+        "Mix: Call 123-456-7890 or email test@example.com."
     ]
+    
+    for case in test_cases:
+        print(f"\nInput:  {case}")
+        result = guard.validate(case)
+        print(f"Passed: {result.validation_passed}")
+        print(f"Output: {result.validated_output}")
 
-    for label, text in test_cases:
-        # TODO: validate the text
-        # result = guard.validate(text)
-        # print(f"\n[{label}]")
-        # print(f"  Input:  {text}")
-        # print(f"  Output: {result.validated_output}")
-        pass  # remove this line when done
-
-
-# ── 5. JSON Guard demo ────────────────────────────────────────────────────────
-def demo_json_guard():
-    """
-    Create a Guard with JSONFormatter and test 5 sample strings:
-      1. Valid JSON (should pass as-is)
-      2. JSON with markdown fences (should strip and pass)
-      3. JSON with single quotes (should convert to double quotes)
-      4. JSON with trailing comma (should remove and pass)
-      5. Truly invalid JSON (should fail cleanly)
-    """
-    print("\n" + "=" * 55)
-    print("  JSON Formatting Demo")
-    print("=" * 55)
-
-    # TODO: create the guard
-    # guard = Guard().use(JSONFormatter(on_fail=OnFailAction.FIX))
-
+def test_json():
+    print("\n=== Testing JSON Formatter ===")
+    guard = Guard().use(JSONFormatter(on_fail=OnFailAction.FIX))
+    
     test_cases = [
-        ("Valid JSON",        '{"name": "Alice", "age": 30}'),
-        ("Markdown fences",   '```json\n{"name": "Bob"}\n```'),
-        ("Single quotes",     "{'name': 'Charlie', 'score': 95}"),
-        ("Trailing comma",    '{"key": "value",}'),
-        ("Truly invalid",     "This is not JSON at all: ??? {]"),
+        '{"name": "John", "age": 30}', # Valid
+        '```json\n{"name": "John", "age": 30}\n```', # Fenced
+        "{'name': 'John', 'age': 30}", # Single quotes
+        '{"name": "John", "age": 30,}', # Trailing comma
+        '{"name": "John", broken' # Broken
     ]
-
-    for label, text in test_cases:
-        # TODO: validate the text
-        # result = guard.validate(text)
-        # status = "✅ Pass" if result.validation_passed else "❌ Fail"
-        # print(f"\n[{label}] {status}")
-        # print(f"  Input:  {text[:60]}")
-        # print(f"  Output: {str(result.validated_output)[:60]}")
-        pass  # remove this line when done
-
-
-# ── 6. Main ─────────────────────────────────────────────────────────────────
-def main():
-    print("=" * 55)
-    print("  Step 4: Guardrails AI Validators")
-    print("=" * 55)
-
-    demo_pii_guard()
-    demo_json_guard()
-
-    print("\n✅ Step 4 complete!")
-
+    
+    for case in test_cases:
+        print(f"\nInput:  {case!r}")
+        result = guard.validate(case)
+        print(f"Passed: {result.validation_passed}")
+        print(f"Output: {result.validated_output}")
 
 if __name__ == "__main__":
-    main()
+    test_pii()
+    test_json()

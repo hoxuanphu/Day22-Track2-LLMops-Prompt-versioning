@@ -1,0 +1,99 @@
+The three main types of machine learning are supervised learning, unsupervised learning, and reinforcement learning.
+
+Overfitting occurs when a model learns the training data too well, including noise, leading to poor generalization on new data.
+
+High bias means underfitting; high variance means overfitting. The optimal model balances both to minimize total error.
+
+L1 and L2 regularization add penalty terms to the loss function to discourage overly complex models.
+
+Cross-validation splits data into multiple folds to estimate model performance more reliably.
+
+Backpropagation computes gradients of the loss with respect to each weight by applying the chain rule of calculus.
+
+CNNs are specialized for processing grid-like data such as images.
+
+LSTMs use gating mechanisms that control information flow through the network.
+
+Common activation functions include ReLU, sigmoid, and tanh.
+
+Pooling layers reduce spatial dimensions, decreasing computational complexity while retaining important features.
+
+The transformer uses self-attention mechanisms and processes entire sequences in parallel, introduced in 'Attention Is All You Need' (2017).
+
+Word embeddings represent words as dense vectors where semantically similar words are geometrically close.
+
+Transfer learning in NLP involves pre-training large models on massive corpora then fine-tuning on downstream tasks.
+
+BERT uses bidirectional transformer training with masked language modeling and next sentence prediction.
+
+Self-attention allows models to weigh the importance of different words relative to each other in a sequence.
+
+GPT uses autoregressive training to predict the next token given previous tokens, trained on massive text datasets.
+
+Instruction tuning involves fine-tuning pre-trained LLMs on instruction-following datasets to improve alignment with human intent.
+
+Reinforcement Learning from Human Feedback uses human preferences to align LLMs to be helpful, harmless, and honest.
+
+Chain-of-thought prompting encourages LLMs to show reasoning step by step, improving performance on complex tasks.
+
+The context length of GPT-4 is up to 128K tokens.
+
+Retrieval-Augmented Generation (RAG) combines generative LLMs with retrieval from external knowledge bases to produce grounded, up-to-date answers.
+
+The main components of a RAG pipeline are a retriever that searches a document store and a generator (LLM) that produces answers from the query and retrieved passages.
+
+Dense retrieval uses neural embeddings to encode queries and documents, determining relevance by cosine similarity.
+
+Chunking strategy is important in RAG because chunking affects retrieval precision and context window fit; options include fixed-size, semantic, and hierarchical chunking.
+
+Advanced RAG techniques exist beyond basic retrieval, such as re-ranking, query expansion, HyDE, and iterative retrieval for multi-hop questions.
+
+Vector databases are used for storing and querying high-dimensional vector embeddings for fast similarity search.
+
+FAISS is a library for efficient similarity search supporting exact and approximate nearest neighbor algorithms.
+
+Text embeddings convert text into numerical vectors where semantically similar texts produce geometrically close vectors.
+
+HNSW builds a hierarchical graph for logarithmic-complexity approximate nearest neighbor search.
+
+Hybrid search in vector databases combines dense vector search with sparse keyword search (BM25) using Reciprocal Rank Fusion.
+
+LangChain is an open-source framework for building LLM applications with abstractions for chains, agents, and data connections.
+
+LangChain Expression Language (LCEL) is a declarative way to compose chains using the pipe operator, supporting streaming, async, and batching.
+
+LangGraph extends LangChain for stateful multi-actor applications as directed graphs, supporting cycles.
+
+LangChain supports various memory types including ConversationBufferMemory, ConversationSummaryMemory, ConversationWindowMemory, and vector store memory.
+
+LangChain retrievers fetch relevant documents from a data source given a query, supporting vector stores and BM25.
+
+LangSmith is a platform for debugging, testing, evaluating, and monitoring LLM applications through automatic tracing.
+
+LangSmith traces capture inputs, outputs, latency, token usage, and errors for every component in a chain.
+
+The LangSmith Prompt Hub is a repository for storing, versioning, and sharing prompt templates, supporting A/B testing and rollback.
+
+LangSmith helps monitor production LLM applications by providing latency percentiles, error rates, token costs, and feedback annotations.
+
+LangSmith datasets are used for systematic evaluation using example inputs and expected outputs to compare model versions or prompt changes.
+
+RAGAS is an open-source framework for evaluating RAG pipelines using LLM-based reference-free metrics.
+
+RAGAS computes faithfulness by extracting claims from the answer and checking whether each claim can be inferred from the retrieved context.
+
+Answer relevancy in RAGAS measures how well the answer addresses the original question by generating synthetic questions from the answer.
+
+Context recall in RAGAS measures how well the retrieved context covers the information needed, evaluated against a ground truth reference.
+
+RAGAS evaluation requires user queries, generated answers, retrieved contexts (list of passages), and optionally reference answers.
+
+Guardrails AI is an open-source framework for adding validation and safety checks to LLM outputs with configurable on-fail actions.
+
+PII is Personally Identifiable Information; exposing it can violate GDPR and HIPAA privacy regulations. It is important to detect in LLM responses.
+
+Structured output validation ensures that LLM responses conform to expected schemas such as JSON, detecting and fixing invalid formats.
+
+Constitutional AI is a technique where a model is given principles to follow and uses self-critique to improve its responses.
+
+Common AI safety concerns with LLMs include hallucination, toxicity, bias, PII leakage, and jailbreaking attacks.
