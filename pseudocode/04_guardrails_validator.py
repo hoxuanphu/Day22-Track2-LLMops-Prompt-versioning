@@ -19,7 +19,7 @@ class PIIDetector(Validator):
         # Credit Card: 16 digits
         self.cc_pattern = re.compile(r'\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b')
 
-    def validate(self, value: str, metadata: dict) -> Validator.ValidationResult:
+    def validate(self, value: str, metadata: dict):
         original_value = value
         
         # Redact patterns
@@ -42,7 +42,7 @@ class JSONFormatter(Validator):
     def __init__(self, on_fail=OnFailAction.FIX, **kwargs):
         super().__init__(on_fail=on_fail, **kwargs)
 
-    def validate(self, value: str, metadata: dict) -> Validator.ValidationResult:
+    def validate(self, value: str, metadata: dict):
         repaired = value.strip()
         
         # 1. Strip markdown fences
